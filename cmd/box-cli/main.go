@@ -21,6 +21,7 @@ type Generator struct {
 	UseCC       bool
 	UseGRPC     bool
 	UseHTTP     bool
+	UseGW       bool
 	UseRegistry bool
 
 	mainTmpl    *template.Template
@@ -28,6 +29,7 @@ type Generator struct {
 	confTmpl    *template.Template
 	serviceTmpl *template.Template
 	clientTmpl  *template.Template
+	gwTmpl      *template.Template
 }
 
 func NewGenerator() *Generator {
@@ -62,17 +64,7 @@ func NewGenerator() *Generator {
 	return g
 }
 
-func (g *Generator) execProtoc() {
-	plugin := "plugins="
-	if g.UseGRPC {
-		plugin += "grpc+"
-	}
-	if g.UseHTTP {
-		plugin += "http+"
-	}
-	plugin = strings.TrimSuffix(plugin, "+")
-	out := fmt.Sprintf("--box_out=%s:%s/src/%s/pb",
-		plugin, g.GoPath, g.PkgPath)
+func (g *Generator) protoc(out string) {
 	includePath1 := fmt.Sprintf("%s/src/%s/pb", g.GoPath, g.PkgPath)
 	includePath2 := fmt.Sprintf(
 		"%s/src/github.com/tddhit/box/third_party/googleapis",
@@ -85,6 +77,26 @@ func (g *Generator) execProtoc() {
 	if err := cmd.Run(); err != nil {
 		log.Error(buf.String())
 		log.Panic(err)
+	}
+}
+
+func (g *Generator) execProtoc() {
+	plugin := "plugins="
+	if g.UseGRPC {
+		plugin += "grpc+"
+	}
+	if g.UseHTTP {
+		plugin += "http+"
+	}
+	plugin = strings.TrimSuffix(plugin, "+")
+	out := fmt.Sprintf("--box_out=%s:%s/src/%s/pb",
+		plugin, g.GoPath, g.PkgPath)
+	g.protoc(out)
+
+	if g.UseGW {
+		out := fmt.Sprintf("--grpc-gateway_out=%s/src/%s/pb",
+			g.GoPath, g.PkgPath)
+		g.protoc(out)
 	}
 }
 
@@ -157,6 +169,9 @@ func (g *Generator) RunOptionList(generator Generator) string {
 	if generator.UseHTTP {
 		s += "mw.WithServer(httpServer), "
 	}
+	if generator.UseGW {
+		s += "mw.WithServer(gwServer), "
+	}
 	if generator.UseCC {
 		s += "mw.WithConfCenter(cc), "
 	}
@@ -190,6 +205,10 @@ func main() {
 					Usage: "Server based on HTTP protocol",
 				},
 				cli.BoolFlag{
+					Name:  "gateway",
+					Usage: "Convert the HTTP protocol to the GRPC protocol",
+				},
+				cli.BoolFlag{
 					Name:  "registry",
 					Usage: "use registry center",
 				},
@@ -216,6 +235,7 @@ func newSkeleton(ctx *cli.Context) {
 	g.CCProject = CamelCase(project)
 	g.UseGRPC = ctx.Bool("grpc")
 	g.UseHTTP = ctx.Bool("http")
+	g.UseGW = ctx.Bool("gateway")
 	g.UseRegistry = ctx.Bool("registry")
 	g.UseCC = ctx.Bool("confcenter")
 	pkgDir, goPath := getPkgDir()
@@ -258,7 +278,7 @@ import "google/api/annotations.proto";
 
 service {{.CCProject}} {
   rpc Echo (EchoRequest) returns (EchoReply) {
-  		{{- if .UseHTTP}}
+  		{{- if or .UseHTTP .UseGW}}
         option (google.api.http) = {
             post: "/echo"
             body: "*"
@@ -305,12 +325,20 @@ package main
 
 import (
     "flag"
+	{{- if .UseGW}}
+	"context"
+	{{- end}}
     {{- if or .UseCC .UseRegistry}}
     "strings"
     "time"
 
     etcd "github.com/coreos/etcd/clientv3"
     {{- end}}
+	{{- if .UseGW}}
+	"github.com/grpc-ecosystem/grpc-gateway/runtime"
+	"google.golang.org/grpc"
+	{{- end}}
+
     {{- if or .UseCC}}
     "github.com/tddhit/box/confcenter"
     {{- end}}
@@ -319,16 +347,20 @@ import (
     "github.com/tddhit/box/naming"
     tropt "github.com/tddhit/box/transport/option"
     {{- end}}
-    {{- if or .UseGRPC .UseHTTP}}
+    {{- if or .UseGRPC .UseHTTP .UseGW}}
     "github.com/tddhit/box/transport"
     {{- end}}
     "github.com/tddhit/tools/log"
-
     . "{{.PkgPath}}/conf"
-    {{- if .UseGRPC}}
+    {{- if or .UseGRPC .UseHTTP}}
     "{{.PkgPath}}/service"
+    {{- end}}
+    {{- if or .UseGRPC .UseHTTP .UseGW}}
     pb "{{.PkgPath}}/pb"
     {{- end}}
+	{{- if .UseGW}}
+	tropt "github.com/tddhit/box/transport/option"
+	{{- end}}
 )
 
 var (
@@ -344,6 +376,10 @@ var (
     {{- end}}
     {{- if .UseHTTP}}
     httpAddr string
+    {{- end}}
+    {{- if .UseGW}}
+    gwAddr string
+	gwBackend string
     {{- end}}
     {{- if and .UseRegistry .UseGRPC}}
     grpcRegistry   string
@@ -373,12 +409,18 @@ func init() {
     {{- if .UseHTTP}}
 	flag.StringVar(&httpAddr, "http-addr", "http://127.0.0.1:9010", "http listen address")
     {{- end}}
+    {{- if .UseGW}}
+	flag.StringVar(&gwAddr, "gateway-addr", "http://127.0.0.1:9020", "gateway listen address")
+	flag.StringVar(&gwBackend, "gateway-backend", "127.0.0.1:9000", "grpc backend server address")
+    {{- end}}
     flag.Parse()
 }
 
 func main() {
-    conf := Conf{}
-
+    var (
+		conf  	Conf
+		err 	error
+	)
     {{- if or .UseCC .UseRegistry}}
     // new etcd client
     endpoints := strings.Split(etcdAddrs, ",")
@@ -404,14 +446,12 @@ func main() {
     {{- if .UseRegistry}}
     r := naming.NewRegistry(ec)
     {{- end}}
-
     log.Init(conf.LogPath, conf.LogLevel)
-
     {{- if or .UseGRPC .UseHTTP}}
     service := service.NewService()
 	{{- end}}
 
-    {{- if .UseGRPC}}
+    {{if .UseGRPC}}
     // new GRPC Server
 	{{- if .UseRegistry}}
     grpcServer, err := transport.Listen(grpcAddr, tropt.WithRegistry(r, grpcRegistry))
@@ -422,9 +462,10 @@ func main() {
         log.Fatal(err)
     }
     grpcServer.Register(pb.{{.CCProject}}GrpcServiceDesc, service)
-    {{- end}}
+    {{end}}
 
-	{{- if .UseHTTP}}
+
+	{{if .UseHTTP}}
     // new HTTP Server
 	{{- if .UseRegistry}}
     httpServer, err := transport.Listen(httpAddr, tropt.WithRegistry(r, httpRegistry))
@@ -435,7 +476,21 @@ func main() {
         log.Fatal(err)
     }
     httpServer.Register(pb.{{.CCProject}}HttpServiceDesc, service)
-    {{- end}}
+    {{end}}
+
+	{{if .UseGW}}
+    // new Gateway Server
+	mux := runtime.NewServeMux()
+	err = pb.Register{{.CCProject}}HandlerFromEndpoint(context.Background(),
+		mux, gwBackend, []grpc.DialOption{grpc.WithInsecure()})
+	if err != nil {
+		log.Fatal(err)
+	}
+    gwServer, err := transport.Listen(gwAddr, tropt.WithGatewayMux(mux))
+    if err != nil {
+        log.Fatal(err)
+    }
+    {{end}}
 
     {{RunOptionList .}}
 }
@@ -445,7 +500,6 @@ const clientCode = `package main
 
 import (
 	"context"
-	"os"
 	"time"
 
     pb "{{.PkgPath}}/pb"
@@ -456,7 +510,7 @@ import (
 func main() {
 	{{- if .UseGRPC}}
 	{
-		conn, err := transport.Dial(os.Args[1])
+		conn, err := transport.Dial("grpc://127.0.0.1:9000")
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -475,7 +529,7 @@ func main() {
 
 	{{- if .UseHTTP}}
 	{
-		conn, err := transport.Dial(os.Args[2])
+			conn, err := transport.Dial("http://127.0.0.1:9010")
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -490,6 +544,26 @@ func main() {
 			log.Fatalf("could not echo: %v", err)
 		}
 		log.Debug("Http Echo: ", reply.Msg)
+	}
+	{{- end}}
+
+	{{- if .UseGW}}
+	{
+		conn, err := transport.Dial("http://127.0.0.1:9020")
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer conn.Close()
+
+		c := pb.New{{.CCProject}}HttpClient(conn)
+		ctx, cancel := context.WithTimeout(context.Background(), 
+				time.Second)
+		defer cancel()
+		reply, err := c.Echo(ctx, &pb.EchoRequest{Msg: "hello"})
+		if err != nil {
+			log.Fatalf("could not echo: %v", err)
+		}
+		log.Debug("Gateway Echo: ", reply.Msg)
 	}
 	{{- end}}
 }

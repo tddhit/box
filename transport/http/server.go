@@ -37,9 +37,13 @@ func New(lis net.Listener,
 	}
 	s := &HttpServer{
 		Server: &http.Server{},
-		mux:    runtime.NewServeMux(),
 		lis:    lis,
 		opts:   ops,
+	}
+	if ops.GatewayMux != nil {
+		s.mux = ops.GatewayMux
+	} else {
+		s.mux = runtime.NewServeMux()
 	}
 	s.Server.Handler = s.mux
 	return s
@@ -48,6 +52,9 @@ func New(lis net.Listener,
 func (s *HttpServer) Register(desc common.ServiceDesc,
 	service interface{}) {
 
+	if s.opts.GatewayMux != nil {
+		return
+	}
 	sd := desc.Desc().(*ServiceDesc)
 	ht := reflect.TypeOf(sd.HandlerType).Elem()
 	st := reflect.TypeOf(service)

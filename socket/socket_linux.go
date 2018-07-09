@@ -20,7 +20,7 @@ func Listen(addr string) (lis net.Listener, err error) {
 		addr := [4]byte{ipv4[0], ipv4[1], ipv4[2], ipv4[3]}
 		sockaddr.Addr = addr
 	}
-	fd, err = unix.Socket(unix.AF_INET, unix.SOCK_STREAM, unix.IPPROTO_TCP)
+	fd, err := unix.Socket(unix.AF_INET, unix.SOCK_STREAM, unix.IPPROTO_TCP)
 	if err != nil {
 		log.Error(err)
 		return

@@ -1,18 +1,21 @@
 package grpc
 
 import (
+	"context"
 	"net"
 
 	"google.golang.org/grpc"
 
+	"github.com/tddhit/box/interceptor"
 	"github.com/tddhit/box/transport/common"
 	"github.com/tddhit/box/transport/option"
 )
 
 type GrpcTransport struct {
 	*grpc.Server
-	opts option.ServerOptions
-	lis  net.Listener
+	opts    option.ServerOptions
+	lis     net.Listener
+	handler interceptor.UnaryHandler
 }
 
 func New(lis net.Listener,
@@ -23,11 +26,29 @@ func New(lis net.Listener,
 		o(&ops)
 	}
 	s := &GrpcTransport{
-		Server: grpc.NewServer(),
-		opts:   ops,
-		lis:    lis,
+		opts: ops,
+		lis:  lis,
 	}
+	s.Server = grpc.NewServer(
+		grpc.UnaryInterceptor(
+			s.unaryInterceptor,
+		),
+	)
 	return s
+}
+
+func (s *GrpcTransport) unaryInterceptor(ctx context.Context,
+	req interface{}, info *grpc.UnaryServerInfo,
+	handler grpc.UnaryHandler) (interface{}, error) {
+
+	f := func(ctx context.Context, req interface{},
+		info *common.UnaryServerInfo) (interface{}, error) {
+
+		return handler(ctx, req)
+	}
+
+	h := interceptor.Chain(f, s.opts.Middlewares...)
+	return h(ctx, req, (*common.UnaryServerInfo)(info))
 }
 
 func (s *GrpcTransport) Register(desc common.ServiceDesc,

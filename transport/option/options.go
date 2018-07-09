@@ -3,6 +3,7 @@ package option
 import (
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
 
+	"github.com/tddhit/box/interceptor"
 	"github.com/tddhit/box/naming"
 )
 
@@ -10,9 +11,16 @@ type ServerOptions struct {
 	RegistryKey string
 	Registry    *naming.Registry
 	GatewayMux  *runtime.ServeMux
+	Middlewares []interceptor.Middleware
 }
 
 type ServerOption func(*ServerOptions)
+
+func WithMiddleware(m interceptor.Middleware) ServerOption {
+	return func(o *ServerOptions) {
+		o.Middlewares = append(o.Middlewares, m)
+	}
+}
 
 func WithRegistry(r *naming.Registry, k string) ServerOption {
 	return func(o *ServerOptions) {

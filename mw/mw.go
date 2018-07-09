@@ -78,6 +78,5 @@ func getDefaultAddr(addr string, n int) string {
 	a := strings.Split(addr, ":")
 	port, _ := strconv.Atoi(a[len(a)-1])
 	a[len(a)-1] = strconv.Itoa(port + n)
-	addr = strings.Join(a, ":")
-	return util.GetLocalAddr(addr)
+	return strings.Join(a, ":")
 }

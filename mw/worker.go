@@ -10,10 +10,12 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/tddhit/box/socket"
+	"github.com/tddhit/box/stats"
 	"github.com/tddhit/box/transport"
 	"github.com/tddhit/tools/log"
 )
@@ -54,6 +56,7 @@ func newWorker(ctx context.Context) *worker {
 func (w *worker) run() {
 	go w.watchMaster()
 	go w.watchSignal()
+	go w.calcQPS()
 	go w.serve()
 
 	if w.servers != nil {
@@ -81,6 +84,13 @@ func (w *worker) run() {
 	log.Infof("WorkerStart\tPid=%d\tReason=%s\n", w.pid, reason)
 	w.wg.Wait()
 	log.Infof("WorkerEnd\tPid=%d\n", w.pid)
+}
+
+func (w *worker) calcQPS() {
+	tick := time.Tick(time.Second)
+	for range tick {
+		stats.GlobalStats().Calculate()
+	}
 }
 
 func (w *worker) watchMaster() {
@@ -133,8 +143,8 @@ func (w *worker) notifyMaster(msg *message) (err error) {
 }
 
 func (w *worker) serve() {
-	//http.HandleFunc("/stats", w.doStats)
-	//http.HandleFunc("/stats.html", w.doStatsHTML)
+	http.HandleFunc("/stats", w.doStats)
+	http.HandleFunc("/stats.html", w.doStatsHTML)
 	//http.Handle("/metrics", promhttp.Handler())
 	lis, err := socket.Listen(w.addr)
 	if err != nil {
@@ -146,11 +156,10 @@ func (w *worker) serve() {
 	}
 }
 
-/*
 func (w *worker) doStats(rsp http.ResponseWriter, req *http.Request) {
 	rsp.Header().Set("Content-Type", "application/json; charset=utf-8")
 	rsp.Header().Set("Access-Control-Allow-Origin", "*")
-	rsp.Write(globalStats().bytes())
+	rsp.Write(stats.GlobalStats().Bytes())
 }
 
 func (w *worker) doStatsHTML(rsp http.ResponseWriter, req *http.Request) {
@@ -162,14 +171,15 @@ func (w *worker) doStatsHTML(rsp http.ResponseWriter, req *http.Request) {
 		addr = req.FormValue("addr")
 	)
 	if addr != "" {
-		html = strings.Replace(globalStats().html, "##ListenAddr##", addr, 1)
+		html = strings.Replace(stats.GlobalStats().Html,
+			"##ListenAddr##", addr, 1)
 	} else {
-		html = strings.Replace(globalStats().html, "##ListenAddr##", w.addr, 1)
+		html = strings.Replace(stats.GlobalStats().Html,
+			"##ListenAddr##", w.addr, 1)
 	}
 	rsp.Header().Set("Content-Type", "text/html; charset=utf-8")
 	rsp.Write([]byte(html))
 }
-*/
 
 func (w *worker) close() {
 	for _, s := range w.servers {

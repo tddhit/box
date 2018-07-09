@@ -1,32 +1,18 @@
-package wox
+package stats
 
 import (
 	"bytes"
 	"encoding/json"
 	"os"
 	"sync"
-
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
-	gStats  *stats
-	once    sync.Once
-	httpQPS *prometheus.GaugeVec
+	gStats *stats
+	once   sync.Once
 )
 
-func init() {
-	httpQPS = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "http_qps",
-			Help: "http qps",
-		},
-		[]string{"endpoint"},
-	)
-	prometheus.MustRegister(httpQPS)
-}
-
-func globalStats() *stats {
+func GlobalStats() *stats {
 	once.Do(func() {
 		gStats = newStats()
 	})
@@ -39,7 +25,7 @@ type stats struct {
 	QPS    int            `json:"qps"`
 	Method map[string]int `json:"method"`
 	data   []byte
-	html   string
+	Html   string
 }
 
 func newStats() *stats {
@@ -51,16 +37,15 @@ func newStats() *stats {
 	return &stats{
 		Id:     os.Getpid(),
 		Method: make(map[string]int),
-		html:   buf.String(),
+		Html:   buf.String(),
 	}
 }
 
-func (s *stats) calculate() {
+func (s *stats) Calculate() {
 	s.Lock()
 	defer s.Unlock()
 
-	for m, qps := range s.Method {
-		httpQPS.WithLabelValues(m).Set(float64(qps))
+	for _, qps := range s.Method {
 		s.QPS += qps
 	}
 	s.data, _ = json.Marshal(s)
@@ -72,7 +57,7 @@ func (s *stats) calculate() {
 	}
 }
 
-func (s *stats) bytes() []byte {
+func (s *stats) Bytes() []byte {
 	s.Lock()
 	defer s.Unlock()
 
@@ -84,7 +69,7 @@ var first=true;var chart=echarts.init(document.getElementById("chart-0"));var Op
 `
 
 const statsBeginHTML = `
-<!DOCTYPE html><html style="height: 100%"><head><meta charset="utf-8"><title>Wox性能监控</title></head><body style="height: 100%; margin: 0"><div id="chart-0"style="height:400px"></div><div id="chart-1"style="height:400px"></div><div id="chart-2"style="height:400px"></div><script type="text/javascript"src="http://echarts.baidu.com/gallery/vendors/echarts/echarts.min.js"></script><script type="text/javascript"src="http://echarts.baidu.com/gallery/vendors/echarts-gl/echarts-gl.min.js"></script><script type="text/javascript"src="http://echarts.baidu.com/gallery/vendors/echarts-stat/ecStat.min.js"></script><script type="text/javascript"src="http://echarts.baidu.com/gallery/vendors/echarts/extension/dataTool.min.js"></script><script type="text/javascript"src="http://echarts.baidu.com/gallery/vendors/echarts/map/js/china.js"></script><script type="text/javascript"src="http://echarts.baidu.com/gallery/vendors/echarts/map/js/world.js"></script><script type="text/javascript"src="http://api.map.baidu.com/api?v=2.0&ak=ZUONbpqGBsYGXNIYHicvbAbM"></script><script type="text/javascript"src="http://echarts.baidu.com/gallery/vendors/echarts/extension/bmap.min.js"></script><script type="text/javascript"src="http://echarts.baidu.com/gallery/vendors/simplex.js"></script><script type="text/javascript"src="http://code.jquery.com/jquery-latest.js"></script><script type="text/javascript">
+<!DOCTYPE html><html style="height: 100%"><head><meta charset="utf-8"><title>Box性能监控</title></head><body style="height: 100%; margin: 0"><div id="chart-0"style="height:400px"></div><div id="chart-1"style="height:400px"></div><div id="chart-2"style="height:400px"></div><script type="text/javascript"src="http://echarts.baidu.com/gallery/vendors/echarts/echarts.min.js"></script><script type="text/javascript"src="http://echarts.baidu.com/gallery/vendors/echarts-gl/echarts-gl.min.js"></script><script type="text/javascript"src="http://echarts.baidu.com/gallery/vendors/echarts-stat/ecStat.min.js"></script><script type="text/javascript"src="http://echarts.baidu.com/gallery/vendors/echarts/extension/dataTool.min.js"></script><script type="text/javascript"src="http://echarts.baidu.com/gallery/vendors/echarts/map/js/china.js"></script><script type="text/javascript"src="http://echarts.baidu.com/gallery/vendors/echarts/map/js/world.js"></script><script type="text/javascript"src="http://api.map.baidu.com/api?v=2.0&ak=ZUONbpqGBsYGXNIYHicvbAbM"></script><script type="text/javascript"src="http://echarts.baidu.com/gallery/vendors/echarts/extension/bmap.min.js"></script><script type="text/javascript"src="http://echarts.baidu.com/gallery/vendors/simplex.js"></script><script type="text/javascript"src="http://code.jquery.com/jquery-latest.js"></script><script type="text/javascript">
 `
 
 const statsEndHTML = `

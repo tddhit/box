@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -9,11 +10,12 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
+	"google.golang.org/grpc"
 
+	"github.com/tddhit/box/interceptor"
 	"github.com/tddhit/box/transport/common"
 	"github.com/tddhit/box/transport/option"
 	"github.com/tddhit/tools/log"
-	"google.golang.org/grpc"
 )
 
 type HttpServer struct {
@@ -67,34 +69,51 @@ func (s *HttpServer) Register(desc common.ServiceDesc,
 func (s *HttpServer) register(sd *ServiceDesc, handler interface{}) {
 	hv := reflect.ValueOf(handler)
 	for _, method := range sd.ServiceDesc.Methods {
-		s.mux.Handle("POST", sd.Pattern[method.MethodName],
-			func(w http.ResponseWriter, req *http.Request,
-				pathParams map[string]string) {
+		handlerFunc := func(w http.ResponseWriter, req *http.Request,
+			pathParams map[string]string) {
 
-				ctx, cancel := context.WithCancel(req.Context())
-				defer cancel()
-				if cn, ok := w.(http.CloseNotifier); ok {
-					go func(done <-chan struct{}, closed <-chan bool) {
-						select {
-						case <-done:
-						case <-closed:
-							cancel()
-						}
-					}(ctx.Done(), cn.CloseNotify())
-				}
-				inboundMarshaler, outboundMarshaler :=
-					runtime.MarshalerForRequest(s.mux, req)
-				rctx, err := runtime.AnnotateContext(ctx, s.mux, req)
-				if err != nil {
-					runtime.HTTPError(ctx, s.mux, outboundMarshaler, w, req, err)
-					return
-				}
-				m := hv.MethodByName(method.MethodName)
-				resp, err := handleReq(rctx, m, inboundMarshaler, req, pathParams)
-				runtime.ForwardResponseMessage(ctx, s.mux, outboundMarshaler, w,
-					req, resp, s.mux.GetForwardResponseOptions()...)
-			})
+			s.handlerFunc(w, req, pathParams, hv, method, sd.ServiceName)
+		}
+		s.mux.Handle("POST", sd.Pattern[method.MethodName], handlerFunc)
 	}
+}
+
+func (s *HttpServer) handlerFunc(w http.ResponseWriter,
+	req *http.Request, pathParams map[string]string,
+	hv reflect.Value, method grpc.MethodDesc, serviceName string) {
+
+	ctx, cancel := context.WithCancel(req.Context())
+	defer cancel()
+	if cn, ok := w.(http.CloseNotifier); ok {
+		go func(done <-chan struct{}, closed <-chan bool) {
+			select {
+			case <-done:
+			case <-closed:
+				cancel()
+			}
+		}(ctx.Done(), cn.CloseNotify())
+	}
+	inboundMarshaler, outboundMarshaler :=
+		runtime.MarshalerForRequest(s.mux, req)
+	rctx, err := runtime.AnnotateContext(ctx, s.mux, req)
+	if err != nil {
+		runtime.HTTPError(ctx, s.mux, outboundMarshaler, w, req, err)
+		return
+	}
+	m := hv.MethodByName(method.MethodName)
+	f := func(ctx context.Context, req interface{},
+		info *common.UnaryServerInfo) (interface{}, error) {
+
+		return handleReq(ctx, m, inboundMarshaler, req.(*http.Request), pathParams)
+	}
+	h := interceptor.Chain(f, s.opts.Middlewares...)
+	info := &common.UnaryServerInfo{
+		Server:     s,
+		FullMethod: fmt.Sprintf("/%s/%s", serviceName, method.MethodName),
+	}
+	resp, err := h(rctx, req, info)
+	runtime.ForwardResponseMessage(ctx, s.mux, outboundMarshaler, w,
+		req, resp.(proto.Message), s.mux.GetForwardResponseOptions()...)
 }
 
 func handleReq(ctx context.Context, method reflect.Value,

@@ -3,78 +3,71 @@
 package main
 
 import (
-    "flag"
 	"context"
+	"flag"
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
-	"google.golang.org/grpc"
-    "github.com/tddhit/box/mw"
-    "github.com/tddhit/box/transport"
-    "github.com/tddhit/tools/log"
-    . "github.com/tddhit/box/example/conf"
-    "github.com/tddhit/box/example/service"
-    pb "github.com/tddhit/box/example/pb"
+	. "github.com/tddhit/box/example/conf"
+	pb "github.com/tddhit/box/example/pb"
+	"github.com/tddhit/box/example/service"
+	"github.com/tddhit/box/mw"
+	"github.com/tddhit/box/transport"
 	tropt "github.com/tddhit/box/transport/option"
+	"github.com/tddhit/tools/log"
+	"google.golang.org/grpc"
 )
 
 var (
-    confPath   string
-    grpcAddr string
-    httpAddr string
-    gwAddr string
+	confPath  string
+	grpcAddr  string
+	httpAddr  string
+	gwAddr    string
 	gwBackend string
 )
 
 func init() {
-    flag.StringVar(&confPath, "conf-path", "conf/example.yml", "config file")
+	flag.StringVar(&confPath, "conf-path", "conf/example.yml", "config file")
 	flag.StringVar(&grpcAddr, "grpc-addr", "grpc://127.0.0.1:9000", "grpc listen address")
 	flag.StringVar(&httpAddr, "http-addr", "http://127.0.0.1:9010", "http listen address")
 	flag.StringVar(&gwAddr, "gateway-addr", "http://127.0.0.1:9020", "gateway listen address")
 	flag.StringVar(&gwBackend, "gateway-backend", "127.0.0.1:9000", "gateway backend address")
-    flag.Parse()
+	flag.Parse()
 }
 
 func main() {
-    var (
-		conf  	Conf
-		err 	error
+	var (
+		conf Conf
+		err  error
 	)
-    NewConf(confPath, &conf)
-    log.Init(conf.LogPath, conf.LogLevel)
-    service := service.NewService()
+	NewConf(confPath, &conf)
+	log.Init(conf.LogPath, conf.LogLevel)
+	service := service.NewService()
 
-    
-    // new GRPC Server
-    grpcServer, err := transport.Listen(grpcAddr)
-    if err != nil {
-        log.Fatal(err)
-    }
-    grpcServer.Register(pb.ExampleGrpcServiceDesc, service)
-    
+	// new GRPC Server
+	grpcServer, err := transport.Listen(grpcAddr)
+	if err != nil {
+		log.Fatal(err)
+	}
+	grpcServer.Register(pb.ExampleGrpcServiceDesc, service)
 
+	// new HTTP Server
+	httpServer, err := transport.Listen(httpAddr)
+	if err != nil {
+		log.Fatal(err)
+	}
+	httpServer.Register(pb.ExampleHttpServiceDesc, service)
 
-	
-    // new HTTP Server
-    httpServer, err := transport.Listen(httpAddr)
-    if err != nil {
-        log.Fatal(err)
-    }
-    httpServer.Register(pb.ExampleHttpServiceDesc, service)
-    
-
-	
-    // new Gateway Server
+	// new Gateway Server
 	mux := runtime.NewServeMux()
 	err = pb.RegisterExampleHandlerFromEndpoint(context.Background(),
 		mux, gwBackend, []grpc.DialOption{grpc.WithInsecure()})
 	if err != nil {
 		log.Fatal(err)
 	}
-    gwServer, err := transport.Listen(gwAddr, tropt.WithGatewayMux(mux))
-    if err != nil {
-        log.Fatal(err)
-    }
-    
+	gwServer, err := transport.Listen(gwAddr, tropt.WithGatewayMux(mux))
+	if err != nil {
+		log.Fatal(err)
+	}
 
-    // run with master-worker
-    mw.Run(mw.WithServer(grpcServer), mw.WithServer(httpServer), mw.WithServer(gwServer))
+	// run with master-worker
+	mw.Run(mw.WithServer(grpcServer), mw.WithServer(httpServer), mw.WithServer(gwServer))
 }

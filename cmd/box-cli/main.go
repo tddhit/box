@@ -69,11 +69,14 @@ func (g *Generator) protoc(out string) {
 	includePath2 := fmt.Sprintf(
 		"%s/src/github.com/tddhit/box/third_party/googleapis",
 		g.GoPath)
+	includePath3 := "/usr/local/include"
 
 	cmd := exec.Command("protoc", "-I", includePath1,
-		"-I", includePath2, out, g.Project+".proto")
+		"-I", includePath2, "-I", includePath3,
+		out, g.Project+".proto")
+
 	var buf bytes.Buffer
-	cmd.Stdout = &buf
+	cmd.Stderr = &buf
 	if err := cmd.Run(); err != nil {
 		log.Error(buf.String())
 		log.Panic(err)

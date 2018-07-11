@@ -69,10 +69,11 @@ func (s *HttpServer) Register(desc common.ServiceDesc,
 func (s *HttpServer) register(sd *ServiceDesc, handler interface{}) {
 	hv := reflect.ValueOf(handler)
 	for _, method := range sd.ServiceDesc.Methods {
+		m := method
 		handlerFunc := func(w http.ResponseWriter, req *http.Request,
 			pathParams map[string]string) {
 
-			s.handlerFunc(w, req, pathParams, hv, method, sd.ServiceName)
+			s.handlerFunc(w, req, pathParams, hv, m, sd.ServiceName)
 		}
 		s.mux.Handle("POST", sd.Pattern[method.MethodName], handlerFunc)
 	}

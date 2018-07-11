@@ -20,6 +20,10 @@ import (
 	"github.com/tddhit/tools/log"
 )
 
+var (
+	OK = []byte(`{"code":200}`)
+)
+
 type worker struct {
 	addr string
 	pid  int
@@ -143,6 +147,7 @@ func (w *worker) notifyMaster(msg *message) (err error) {
 }
 
 func (w *worker) serve() {
+	http.HandleFunc("/status", w.doStatus)
 	http.HandleFunc("/stats", w.doStats)
 	http.HandleFunc("/stats.html", w.doStatsHTML)
 	//http.Handle("/metrics", promhttp.Handler())
@@ -154,6 +159,10 @@ func (w *worker) serve() {
 	if err := srv.Serve(lis); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func (w *worker) doStatus(rsp http.ResponseWriter, req *http.Request) {
+	rsp.Write(OK)
 }
 
 func (w *worker) doStats(rsp http.ResponseWriter, req *http.Request) {

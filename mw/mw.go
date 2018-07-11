@@ -33,12 +33,26 @@ func New(opts ...Option) *MW {
 		opt(f)
 	}
 	if f.masterAddr != "" {
-		f.masterAddr = util.GetLocalAddr(f.masterAddr)
+		s := strings.Split(f.masterAddr, ":")
+		if len(s) != 2 {
+			log.Fatal("invalid masterAddr")
+		}
+		ip := s[0]
+		if ip == "" {
+			f.masterAddr = util.GetLocalAddr(f.masterAddr)
+		}
 	} else if f.servers != nil {
 		f.masterAddr = getDefaultAddr(f.servers[len(f.servers)-1].Addr(), 2)
 	}
 	if f.workerAddr != "" {
-		f.workerAddr = util.GetLocalAddr(f.workerAddr)
+		s := strings.Split(f.workerAddr, ":")
+		if len(s) != 2 {
+			log.Fatal("invalid workerAddr")
+		}
+		ip := s[0]
+		if ip == "" {
+			f.workerAddr = util.GetLocalAddr(f.workerAddr)
+		}
 	} else if f.servers != nil {
 		f.workerAddr = getDefaultAddr(f.servers[len(f.servers)-1].Addr(), 1)
 	}

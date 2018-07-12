@@ -1,20 +1,20 @@
 package conf
 
 import (
-    "io/ioutil"
+	"io/ioutil"
 
-    yaml "gopkg.in/yaml.v2"
+	yaml "gopkg.in/yaml.v2"
 )
 
 type Conf struct {
-    LogPath  string `yaml:"logpath"`
-    LogLevel int    `yaml:"loglevel"`
+	LogPath  string `yaml:"logpath"`
+	LogLevel int	`yaml:"loglevel"`
 }
 
 func NewConf(path string, conf *Conf) error {
-    file, err := ioutil.ReadFile(path)
-    if err != nil {
-        return err
-    }
-    return yaml.Unmarshal(file, conf)
+	file, err := ioutil.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	return yaml.Unmarshal(file, conf)
 }

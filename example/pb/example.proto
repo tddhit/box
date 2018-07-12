@@ -6,10 +6,10 @@ import "google/api/annotations.proto";
 
 service Example {
   rpc Echo (EchoRequest) returns (EchoReply) {
-        option (google.api.http) = {
-            post: "/echo"
-            body: "*"
-        };
+		option (google.api.http) = {
+			post: "/echo"
+			body: "*"
+		};
   }
 }
 

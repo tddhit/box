@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-    pb "github.com/tddhit/box/example/pb"
+	pb "github.com/tddhit/box/example/pb"
 	"github.com/tddhit/box/transport"
 	"github.com/tddhit/tools/log"
 )

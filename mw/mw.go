@@ -81,6 +81,10 @@ func (f *MW) Go() {
 	}
 }
 
+func IsWorker() bool {
+	return os.Getenv(common.FORK) == "1"
+}
+
 func Run(opts ...Option) {
 	f := New(opts...)
 	f.Go()

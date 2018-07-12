@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"flag"
+
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
 	. "github.com/tddhit/box/example/conf"
 	pb "github.com/tddhit/box/example/pb"
@@ -29,7 +30,7 @@ func init() {
 	flag.StringVar(&grpcAddr, "grpc-addr", "grpc://127.0.0.1:9000", "grpc listen address")
 	flag.StringVar(&httpAddr, "http-addr", "http://127.0.0.1:9010", "http listen address")
 	flag.StringVar(&gwAddr, "gateway-addr", "http://127.0.0.1:9020", "gateway listen address")
-	flag.StringVar(&gwBackend, "gateway-backend", "127.0.0.1:9000", "gateway backend address")
+	flag.StringVar(&gwBackend, "gateway-backend", "127.0.0.1:9000", "grpc backend server address")
 	flag.Parse()
 }
 
@@ -37,24 +38,31 @@ func main() {
 	var (
 		conf Conf
 		err  error
+		svc  interface{}
 	)
 	NewConf(confPath, &conf)
 	log.Init(conf.LogPath, conf.LogLevel)
-	service := service.NewService()
+	if mw.IsWorker() {
+		svc = service.NewService()
+	}
 
 	// new GRPC Server
 	grpcServer, err := transport.Listen(grpcAddr)
 	if err != nil {
 		log.Fatal(err)
 	}
-	grpcServer.Register(pb.ExampleGrpcServiceDesc, service)
+	if mw.IsWorker() {
+		grpcServer.Register(pb.ExampleGrpcServiceDesc, svc)
+	}
 
 	// new HTTP Server
 	httpServer, err := transport.Listen(httpAddr)
 	if err != nil {
 		log.Fatal(err)
 	}
-	httpServer.Register(pb.ExampleHttpServiceDesc, service)
+	if mw.IsWorker() {
+		httpServer.Register(pb.ExampleHttpServiceDesc, svc)
+	}
 
 	// new Gateway Server
 	mux := runtime.NewServeMux()

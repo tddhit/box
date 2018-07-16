@@ -27,11 +27,11 @@ func NewRegistry(ec *etcd.Client, opts ...RegistryOption) *Registry {
 	}
 }
 
-func (r *Registry) Register(key, addr string) context.CancelFunc {
+func (r *Registry) Register(serviceName, addr string) context.CancelFunc {
 	done := make(chan struct{})
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
-		key := key + "/" + addr
+		key := serviceName + "/" + addr
 		rsp, err := r.ec.Grant(ctx, r.opt.ttl)
 		if err != nil {
 			log.Error(err)
@@ -51,7 +51,7 @@ func (r *Registry) Register(key, addr string) context.CancelFunc {
 			log.Error("ch is nil")
 			return
 		}
-		if _, err = r.ec.Put(ctx, key+"/"+addr, addr,
+		if _, err = r.ec.Put(ctx, key, addr,
 			etcd.WithLease(rsp.ID)); err != nil {
 			log.Error(err)
 			return
@@ -66,9 +66,9 @@ func (r *Registry) Register(key, addr string) context.CancelFunc {
 	select {
 	case <-time.After(r.opt.timeout):
 		cancel()
-		log.Fatalf("registry %s/%s timeout.\n", key, addr)
+		log.Fatalf("registry %s/%s timeout.\n", serviceName, addr)
 	case <-done:
-		log.Infof("registry success:%s/%s\n", key, addr)
+		log.Infof("registry success:%s/%s\n", serviceName, addr)
 	}
 	return cancel
 }

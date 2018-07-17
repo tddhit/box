@@ -3,11 +3,13 @@ package http
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
 	"time"
+
+	"github.com/golang/protobuf/jsonpb"
+	"github.com/golang/protobuf/proto"
 
 	"github.com/tddhit/box/transport/option"
 	"github.com/tddhit/tools/log"
@@ -15,8 +17,10 @@ import (
 
 type HttpClient struct {
 	*http.Client
-	addr string
-	opt  option.DialOptions
+	addr        string
+	opt         option.DialOptions
+	marshaler   *jsonpb.Marshaler
+	unmarshaler *jsonpb.Unmarshaler
 }
 
 func DialContext(ctx context.Context, target string,
@@ -38,8 +42,10 @@ func DialContext(ctx context.Context, target string,
 			},
 			Timeout: 500 * time.Millisecond,
 		},
-		addr: target,
-		opt:  opt,
+		addr:        target,
+		opt:         opt,
+		marshaler:   &jsonpb.Marshaler{EnumsAsInts: true},
+		unmarshaler: &jsonpb.Unmarshaler{AllowUnknownFields: true},
 	}
 	return c, nil
 }
@@ -48,7 +54,7 @@ func (c *HttpClient) Invoke(ctx context.Context, method string,
 	args interface{}, reply interface{}, opts ...option.CallOption) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(args); err != nil {
+	if err := c.marshaler.Marshal(&buf, args.(proto.Message)); err != nil {
 		log.Error(err)
 		return err
 	}
@@ -64,7 +70,7 @@ func (c *HttpClient) Invoke(ctx context.Context, method string,
 		return err
 	}
 	defer rsp.Body.Close()
-	if err = json.NewDecoder(rsp.Body).Decode(reply); err != nil {
+	if err = c.unmarshaler.Unmarshal(rsp.Body, reply.(proto.Message)); err != nil {
 		log.Error(err)
 		return err
 	}

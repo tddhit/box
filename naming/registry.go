@@ -2,6 +2,7 @@ package naming
 
 import (
 	"context"
+	"os"
 	"time"
 
 	etcd "github.com/coreos/etcd/clientv3"
@@ -16,7 +17,6 @@ type Registry struct {
 }
 
 func NewRegistry(ec *etcd.Client, opts ...RegistryOption) *Registry {
-
 	opt := defaultRegistryOption
 	for _, o := range opts {
 		o(&opt)
@@ -30,45 +30,47 @@ func NewRegistry(ec *etcd.Client, opts ...RegistryOption) *Registry {
 func (r *Registry) Register(serviceName, addr string) context.CancelFunc {
 	done := make(chan struct{})
 	ctx, cancel := context.WithCancel(context.Background())
+	key := serviceName + "/" + addr
 	go func() {
-		key := serviceName + "/" + addr
 		rsp, err := r.ec.Grant(ctx, r.opt.ttl)
 		if err != nil {
-			log.Error(err)
+			log.Fatal(err)
 			return
 		}
 		_, err = r.ec.Get(ctx, key)
 		if err != nil && err != rpctypes.ErrKeyNotFound {
-			log.Error(err)
+			log.Fatal(err)
 			return
 		}
 		ch, err := r.ec.KeepAlive(ctx, rsp.ID)
 		if err != nil {
-			log.Error(err)
+			log.Fatal(err)
 			return
 		}
 		if ch == nil {
-			log.Error("ch is nil")
+			log.Fatal("ch is nil")
 			return
 		}
-		if _, err = r.ec.Put(ctx, key, addr,
-			etcd.WithLease(rsp.ID)); err != nil {
-			log.Error(err)
+		if _, err = r.ec.Put(ctx, key, addr, etcd.WithLease(rsp.ID)); err != nil {
+			log.Fatal(err)
 			return
 		}
+		log.Infof("registry success. Pid=%d key=%s leaseID=%d",
+			os.Getpid(), key, rsp.ID)
 		go func() {
 			for range ch {
 			}
-			log.Warn("registry keepalive close.")
+			log.Warnf("registry close. Pid=%d key=%s leaseID=%d",
+				os.Getpid(), key, rsp.ID)
 		}()
 		done <- struct{}{}
 	}()
 	select {
 	case <-time.After(r.opt.timeout):
 		cancel()
-		log.Fatalf("registry %s/%s timeout.\n", serviceName, addr)
+		log.Fatalf("registry timeout. Pid=%d\tkey=%s\n", os.Getpid(), key)
 	case <-done:
-		log.Infof("registry success:%s/%s\n", serviceName, addr)
+		//log.Infof("registry success. Pid=%d\tkey=%s\n", os.Getpid(), key)
 	}
 	return cancel
 }

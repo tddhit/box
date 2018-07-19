@@ -66,18 +66,18 @@ func (b *etcdBuilder) Build(target resolver.Target, cc resolver.ClientConn, opts
 		log.Error(err)
 		return nil, err
 	}
-	ctx, cancel := context.WithCancel(context.Background())
 	d := &etcdResolver{
 		ec:          ec,
 		freq:        b.freq,
-		servicename: target.Endpoint,
-		ctx:         ctx,
-		cancel:      cancel,
+		serviceName: target.Endpoint,
 		cc:          cc,
 		t:           time.NewTimer(0),
 		rn:          make(chan struct{}, 1),
 	}
 
+	if err := d.watchEtcd(); err != nil {
+		return nil, err
+	}
 	d.wg.Add(1)
 	go d.watcher()
 	return d, nil
@@ -92,7 +92,7 @@ func (b *etcdBuilder) Scheme() string {
 type etcdResolver struct {
 	ec          *etcd.Client
 	freq        time.Duration
-	servicename string
+	serviceName string
 	ctx         context.Context
 	cancel      context.CancelFunc
 	cc          resolver.ClientConn
@@ -123,6 +123,40 @@ func (d *etcdResolver) Close() {
 	d.t.Stop()
 }
 
+func (d *etcdResolver) watchEtcd() error {
+	var (
+		watchC etcd.WatchChan
+		done   = make(chan struct{})
+	)
+	d.ctx, d.cancel = context.WithCancel(context.Background())
+	go func() {
+		watchC = d.ec.Watch(d.ctx, d.serviceName, etcd.WithPrefix())
+		select { //avoid goroutine leak
+		case done <- struct{}{}:
+		default:
+		}
+	}()
+	select {
+	case <-time.After(time.Second):
+		log.Errorf("resolver watch timeout. target=%s", d.serviceName)
+		d.cancel()
+		return d.ctx.Err()
+	case <-done:
+		log.Infof("resolver watch success. target=%s", d.serviceName)
+	}
+	go func() {
+		for rsp := range watchC {
+			log.Infof("WatchEvent\t%s\n", d.serviceName)
+			for _, event := range rsp.Events {
+				log.Infof("WatchEvent\tType=%d\tKey=%s\tValue=%s\n",
+					event.Type, string(event.Kv.Key), string(event.Kv.Value))
+				d.ResolveNow(resolver.ResolveNowOption{})
+			}
+		}
+	}()
+	return nil
+}
+
 func (d *etcdResolver) watcher() {
 	defer d.wg.Done()
 	for {
@@ -138,6 +172,7 @@ func (d *etcdResolver) watcher() {
 		if err != nil {
 			log.Error(err)
 		} else {
+			log.Debug(result)
 			d.cc.NewAddress(result)
 		}
 	}
@@ -146,7 +181,7 @@ func (d *etcdResolver) watcher() {
 func (d *etcdResolver) lookup() ([]resolver.Address, error) {
 	var addrs []resolver.Address
 	ctx, _ := context.WithTimeout(context.Background(), time.Second)
-	if rsp, err := d.ec.Get(ctx, d.servicename, etcd.WithPrefix()); err != nil {
+	if rsp, err := d.ec.Get(ctx, d.serviceName, etcd.WithPrefix()); err != nil {
 		return nil, err
 	} else {
 		for _, kv := range rsp.Kvs {

@@ -60,6 +60,7 @@ type master struct {
 	children  sync.Map // key: workerPID, value:state
 	forkStats sync.Map
 	forkWG    sync.WaitGroup
+	forkC     chan string
 
 	confCenter *confcenter.ConfCenter
 }
@@ -70,6 +71,7 @@ func newMaster(ctx context.Context) *master {
 		addr:    f.masterAddr,
 		pid:     os.Getpid(),
 		pidPath: f.pidPath,
+		forkC:   make(chan string),
 	}
 }
 
@@ -78,12 +80,10 @@ func (m *master) run() {
 	if err := os.Setenv(common.FORK, "1"); err != nil {
 		log.Fatal(err)
 	}
+	go m.handleFork()
 	for i := 0; i < workerNum; i++ {
-		if _, err := m.fork(reasonStart); err != nil {
-			log.Fatal(err)
-		}
+		m.forkC <- reasonStart
 	}
-
 	go m.watchConf()
 	go m.watchWorker()
 	go m.serve()
@@ -97,6 +97,7 @@ func (m *master) run() {
 			log.Infof("WatchSignal\tPid=%d\tSig=%s\n", m.pid, sig)
 			switch sig {
 			case syscall.SIGHUP:
+				log.Reopen()
 				m.reload()
 			case syscall.SIGINT, syscall.SIGQUIT:
 				m.graceful()
@@ -146,9 +147,7 @@ func (m *master) watchWorker() {
 		state := value.(workerState)
 		switch state {
 		case workerCrash:
-			if _, err := m.fork(reasonCrash); err != nil {
-				log.Error(err)
-			}
+			m.forkC <- reasonCrash
 			fallthrough
 		case workerQuit:
 			m.children.Delete(pid)
@@ -156,9 +155,42 @@ func (m *master) watchWorker() {
 		}
 		return true
 	}
-	tick := time.Tick(1 * time.Second)
+	tick := time.Tick(time.Second)
 	for range tick {
 		m.children.Range(f)
+	}
+}
+
+func (m *master) modifyState(from, to workerState) {
+	f := func(key, value interface{}) bool {
+		pid := key.(int)
+		state := value.(workerState)
+		if state == from {
+			m.children.Store(pid, to)
+		}
+		return true
+	}
+	m.children.Range(f)
+}
+
+func (m *master) handleFork() {
+	for reason := range m.forkC {
+		switch reason {
+		case reasonStart:
+		case reasonReload:
+			m.modifyState(workerAlive, workerReload)
+		case reasonCrash:
+		default:
+		}
+		if _, err := m.fork(reason); err != nil {
+			switch reason {
+			case reasonStart:
+				log.Fatal(reason, err)
+			default:
+				log.Error(reason, err)
+			}
+		}
+		time.Sleep(time.Second)
 	}
 }
 
@@ -237,20 +269,8 @@ func (m *master) readMsg(pid int, uc *net.UnixConn) {
 }
 
 func (m *master) reload() {
-	log.Reopen()
-	f := func(key, value interface{}) bool {
-		pid := key.(int)
-		state := value.(workerState)
-		if state == workerAlive {
-			m.children.Store(pid, workerReload)
-		}
-		return true
-	}
-	m.children.Range(f)
 	for i := 0; i < workerNum; i++ {
-		if _, err := m.fork(reasonReload); err != nil {
-			log.Error(err)
-		}
+		m.forkC <- reasonReload
 	}
 }
 
@@ -304,10 +324,11 @@ func (m *master) serve() {
 
 func (m *master) doStats(rsp http.ResponseWriter, req *http.Request) {
 	var jsonRsp struct {
-		Worker map[string]int32 `json:"worker"`
+		Worker map[string]int `json:"worker"`
 	}
+	jsonRsp.Worker = make(map[string]int)
 	m.forkStats.Range(func(key, value interface{}) bool {
-		jsonRsp.Worker[key.(string)] = value.(int32)
+		jsonRsp.Worker[key.(string)] = value.(int)
 		return true
 	})
 	out, _ := json.Marshal(jsonRsp)

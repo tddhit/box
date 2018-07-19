@@ -24,8 +24,8 @@ type stats struct {
 	Id     int            `json:"id"`
 	QPS    int            `json:"qps"`
 	Method map[string]int `json:"method"`
+	Html   string         `json:"-"`
 	data   []byte
-	Html   string
 }
 
 func newStats() *stats {

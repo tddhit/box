@@ -53,7 +53,7 @@ func (s *Server) RegisterAddr() {
 	}
 }
 
-func (s *Server) UnegisterAddr() {
+func (s *Server) UnregisterAddr() {
 	if s.opts.Registry != nil {
 		s.cancel()
 		time.Sleep(time.Duration(s.opts.Registry.TTL())*time.Second +

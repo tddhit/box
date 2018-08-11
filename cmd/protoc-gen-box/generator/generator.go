@@ -56,8 +56,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/tddhit/box/cmd/protoc-gen-box/generator/internal/remap"
 	"github.com/golang/protobuf/proto"
+	"github.com/tddhit/box/cmd/protoc-gen-box/generator/internal/remap"
 
 	"github.com/golang/protobuf/protoc-gen-go/descriptor"
 	plugin "github.com/golang/protobuf/protoc-gen-go/plugin"

@@ -150,6 +150,7 @@ func (w *worker) serve() {
 	http.HandleFunc("/status", w.doStatus)
 	http.HandleFunc("/stats", w.doStats)
 	http.HandleFunc("/stats.html", w.doStatsHTML)
+
 	//http.Handle("/metrics", promhttp.Handler())
 	lis, err := socket.Listen(w.addr)
 	if err != nil {
@@ -193,7 +194,7 @@ func (w *worker) doStatsHTML(rsp http.ResponseWriter, req *http.Request) {
 func (w *worker) close() {
 	for _, s := range w.servers {
 		go func(s *transport.Server) {
-			s.UnegisterAddr()
+			s.UnregisterAddr()
 			s.Close()
 		}(s)
 	}

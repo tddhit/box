@@ -21,7 +21,7 @@ import (
 )
 
 var (
-	OK = []byte(`{"code":200}`)
+	ok = []byte(`{"code":200}`)
 )
 
 type worker struct {
@@ -163,7 +163,7 @@ func (w *worker) serve() {
 }
 
 func (w *worker) doStatus(rsp http.ResponseWriter, req *http.Request) {
-	rsp.Write(OK)
+	rsp.Write(ok)
 }
 
 func (w *worker) doStats(rsp http.ResponseWriter, req *http.Request) {

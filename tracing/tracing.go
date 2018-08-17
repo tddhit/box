@@ -8,7 +8,6 @@ import (
 
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
-	jaeger "github.com/uber/jaeger-client-go"
 	config "github.com/uber/jaeger-client-go/config"
 	"google.golang.org/grpc/metadata"
 
@@ -38,10 +37,11 @@ func New(opts ...Option) (*Tracer, error) {
 			LocalAgentHostPort: opt.agentAddr,
 		},
 	}
-	tracer, closer, err := cfg.New(opt.service, config.Logger(jaeger.StdLogger))
+	tracer, closer, err := cfg.New(opt.service)
 	if err != nil {
 		return nil, err
 	}
+	opentracing.SetGlobalTracer(tracer)
 	return &Tracer{
 		Tracer: tracer,
 		opt:    opt,
@@ -49,7 +49,7 @@ func New(opts ...Option) (*Tracer, error) {
 	}, nil
 }
 
-func TraceServer(tracer opentracing.Tracer) interceptor.Middleware {
+func ServerMiddleware(tracer opentracing.Tracer) interceptor.UnaryServerMiddleware {
 	return func(next interceptor.UnaryHandler) interceptor.UnaryHandler {
 		return func(ctx context.Context, req interface{},
 			info *common.UnaryServerInfo) (interface{}, error) {
@@ -68,23 +68,24 @@ func TraceServer(tracer opentracing.Tracer) interceptor.Middleware {
 				ext.SpanKindRPCServer,
 			)
 			defer span.Finish()
+
 			ctx = opentracing.ContextWithSpan(ctx, span)
 			return next(ctx, req, info)
 		}
 	}
 }
 
-func TraceClient(tracer opentracing.Tracer) interceptor.Middleware {
-	return func(next interceptor.UnaryHandler) interceptor.UnaryHandler {
-		return func(ctx context.Context, req interface{},
-			info *common.UnaryServerInfo) (interface{}, error) {
+func ClientMiddleware(tracer opentracing.Tracer) interceptor.UnaryClientMiddleware {
+	return func(next interceptor.UnaryInvoker) interceptor.UnaryInvoker {
+		return func(ctx context.Context, method string,
+			req, reply interface{}) error {
 
 			var parentCtx opentracing.SpanContext
 			if parentSpan := opentracing.SpanFromContext(ctx); parentSpan != nil {
 				parentCtx = parentSpan.Context()
 			}
 			clientSpan := tracer.StartSpan(
-				info.FullMethod,
+				method,
 				opentracing.ChildOf(parentCtx),
 				ext.SpanKindRPCClient,
 			)
@@ -102,9 +103,34 @@ func TraceClient(tracer opentracing.Tracer) interceptor.Middleware {
 				log.Error(err)
 			}
 			ctx = metadata.NewOutgoingContext(ctx, md)
-			return next(ctx, req, info)
+			return next(ctx, method, req, reply)
 		}
 	}
+}
+
+func Execute(ctx context.Context, operationName string, f func()) context.Context {
+	span, spanCtx := opentracing.StartSpanFromContext(ctx, operationName)
+	f()
+	span.Finish()
+	return spanCtx
+}
+
+func Start(ctx context.Context, operationName string) opentracing.Span {
+	span := opentracing.SpanFromContext(ctx)
+	if span != nil {
+		return opentracing.GlobalTracer().StartSpan(operationName,
+			opentracing.ChildOf(span.Context()))
+	}
+	return opentracing.GlobalTracer().StartSpan(operationName)
+}
+
+func Stop(ctx context.Context, span opentracing.Span) context.Context {
+	span.Finish()
+	return opentracing.ContextWithSpan(ctx, span)
+}
+
+func (t *Tracer) Close() {
+	t.closer.Close()
 }
 
 type mdReaderWriter struct {

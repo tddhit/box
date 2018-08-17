@@ -11,12 +11,12 @@ type ServerOptions struct {
 	RegistryKey string
 	Registry    *naming.Registry
 	GatewayMux  *runtime.ServeMux
-	Middlewares []interceptor.Middleware
+	Middlewares []interceptor.UnaryServerMiddleware
 }
 
 type ServerOption func(*ServerOptions)
 
-func WithMiddleware(m interceptor.Middleware) ServerOption {
+func WithUnaryServerMiddleware(m interceptor.UnaryServerMiddleware) ServerOption {
 	return func(o *ServerOptions) {
 		o.Middlewares = append(o.Middlewares, m)
 	}
@@ -36,10 +36,17 @@ func WithGatewayMux(m *runtime.ServeMux) ServerOption {
 }
 
 type DialOptions struct {
-	Balancer string
+	Balancer    string
+	Middlewares []interceptor.UnaryClientMiddleware
 }
 
 type DialOption func(*DialOptions)
+
+func WithUnaryClientMiddleware(m interceptor.UnaryClientMiddleware) DialOption {
+	return func(o *DialOptions) {
+		o.Middlewares = append(o.Middlewares, m)
+	}
+}
 
 func WithBalancer(b string) DialOption {
 	return func(o *DialOptions) {

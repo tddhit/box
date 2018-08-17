@@ -47,7 +47,7 @@ func (s *GrpcTransport) unaryInterceptor(ctx context.Context,
 		return handler(ctx, req)
 	}
 
-	h := interceptor.Chain(f, s.opts.Middlewares...)
+	h := interceptor.ChainUnaryServer(f, s.opts.Middlewares...)
 	return h(ctx, req, (*common.UnaryServerInfo)(info))
 }
 

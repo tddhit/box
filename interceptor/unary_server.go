@@ -10,21 +10,21 @@ import (
 type UnaryHandler func(ctx context.Context, req interface{},
 	info *common.UnaryServerInfo) (rsp interface{}, err error)
 
-type Middleware func(UnaryHandler) UnaryHandler
+type UnaryServerMiddleware func(UnaryHandler) UnaryHandler
 
-func chain(h UnaryHandler, others []Middleware) UnaryHandler {
+func chainUnaryServer(h UnaryHandler, others []UnaryServerMiddleware) UnaryHandler {
 	for i := len(others) - 1; i >= 0; i-- {
 		h = others[i](h)
 	}
 	return h
 }
 
-func Chain(h UnaryHandler, others ...Middleware) UnaryHandler {
-	var ms = []Middleware{
+func ChainUnaryServer(h UnaryHandler, others ...UnaryServerMiddleware) UnaryHandler {
+	var ms = []UnaryServerMiddleware{
 		withStats,
 	}
 	ms = append(ms, others...)
-	return chain(h, ms)
+	return chainUnaryServer(h, ms)
 }
 
 func withStats(next UnaryHandler) UnaryHandler {

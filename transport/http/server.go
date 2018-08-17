@@ -107,7 +107,7 @@ func (s *HttpServer) handlerFunc(w http.ResponseWriter,
 
 		return handleReq(ctx, m, inboundMarshaler, req.(*http.Request), pathParams)
 	}
-	h := interceptor.Chain(f, s.opts.Middlewares...)
+	h := interceptor.ChainUnaryServer(f, s.opts.Middlewares...)
 	info := &common.UnaryServerInfo{
 		Server:     s,
 		FullMethod: fmt.Sprintf("/%s/%s", serviceName, method.MethodName),

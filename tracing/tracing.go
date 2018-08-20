@@ -8,6 +8,7 @@ import (
 
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
+	jaeger "github.com/uber/jaeger-client-go"
 	config "github.com/uber/jaeger-client-go/config"
 	"google.golang.org/grpc/metadata"
 
@@ -108,6 +109,22 @@ func ClientMiddleware(tracer opentracing.Tracer) interceptor.UnaryClientMiddlewa
 	}
 }
 
+func (t *Tracer) Close() {
+	t.closer.Close()
+}
+
+func TraceIDFromContext(ctx context.Context) string {
+	span := opentracing.SpanFromContext(ctx)
+	if span != nil {
+		if spanCtx := span.Context(); spanCtx != nil {
+			if c, ok := spanCtx.(jaeger.SpanContext); ok {
+				return c.TraceID().String()
+			}
+		}
+	}
+	return ""
+}
+
 func Execute(ctx context.Context, operationName string, f func()) context.Context {
 	span, spanCtx := opentracing.StartSpanFromContext(ctx, operationName)
 	f()
@@ -127,10 +144,6 @@ func Start(ctx context.Context, operationName string) opentracing.Span {
 func Stop(ctx context.Context, span opentracing.Span) context.Context {
 	span.Finish()
 	return opentracing.ContextWithSpan(ctx, span)
-}
-
-func (t *Tracer) Close() {
-	t.closer.Close()
 }
 
 type mdReaderWriter struct {

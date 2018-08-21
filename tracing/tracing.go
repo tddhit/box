@@ -17,13 +17,18 @@ import (
 	"github.com/tddhit/tools/log"
 )
 
+var t *Tracer
+
 type Tracer struct {
 	opentracing.Tracer
 	opt    options
 	closer io.Closer
 }
 
-func New(opts ...Option) (*Tracer, error) {
+func Init(opts ...Option) error {
+	if t != nil {
+		log.Panic("tracer has been initialized")
+	}
 	opt := defaultOption
 	for _, o := range opts {
 		o(&opt)
@@ -40,80 +45,89 @@ func New(opts ...Option) (*Tracer, error) {
 	}
 	tracer, closer, err := cfg.New(opt.service)
 	if err != nil {
-		return nil, err
+		return nil
 	}
 	opentracing.SetGlobalTracer(tracer)
-	return &Tracer{
+	t = &Tracer{
 		Tracer: tracer,
-		opt:    opt,
 		closer: closer,
-	}, nil
+		opt:    opt,
+	}
+	return nil
 }
 
-func ServerMiddleware(tracer opentracing.Tracer) interceptor.UnaryServerMiddleware {
-	return func(next interceptor.UnaryHandler) interceptor.UnaryHandler {
-		return func(ctx context.Context, req interface{},
-			info *common.UnaryServerInfo) (interface{}, error) {
+func ServerMiddleware(next interceptor.UnaryHandler) interceptor.UnaryHandler {
+	return func(ctx context.Context, req interface{},
+		info *common.UnaryServerInfo) (interface{}, error) {
 
-			md, ok := metadata.FromIncomingContext(ctx)
-			if !ok {
-				md = metadata.New(nil)
-			}
-			spanCtx, err := tracer.Extract(opentracing.TextMap, mdReaderWriter{&md})
-			if err != nil && err != opentracing.ErrSpanContextNotFound {
-				log.Error(err)
-			}
-			span := tracer.StartSpan(
-				info.FullMethod,
-				ext.RPCServerOption(spanCtx),
-				ext.SpanKindRPCServer,
-			)
-			defer span.Finish()
-
-			ctx = opentracing.ContextWithSpan(ctx, span)
-			return next(ctx, req, info)
+		if t == nil {
+			log.Panic("uninitiated tracer ")
 		}
+		md, ok := metadata.FromIncomingContext(ctx)
+		if !ok {
+			md = metadata.New(nil)
+		}
+		spanCtx, err := t.Extract(opentracing.TextMap, mdReaderWriter{&md})
+		if err != nil && err != opentracing.ErrSpanContextNotFound {
+			log.Error(err)
+		}
+		span := t.StartSpan(
+			info.FullMethod,
+			ext.RPCServerOption(spanCtx),
+			ext.SpanKindRPCServer,
+		)
+		defer span.Finish()
+
+		ctx = opentracing.ContextWithSpan(ctx, span)
+		return next(ctx, req, info)
 	}
 }
 
-func ClientMiddleware(tracer opentracing.Tracer) interceptor.UnaryClientMiddleware {
-	return func(next interceptor.UnaryInvoker) interceptor.UnaryInvoker {
-		return func(ctx context.Context, method string,
-			req, reply interface{}) error {
+func ClientMiddleware(next interceptor.UnaryInvoker) interceptor.UnaryInvoker {
+	return func(ctx context.Context, method string,
+		req, reply interface{}) error {
 
-			var parentCtx opentracing.SpanContext
-			if parentSpan := opentracing.SpanFromContext(ctx); parentSpan != nil {
-				parentCtx = parentSpan.Context()
-			}
-			clientSpan := tracer.StartSpan(
-				method,
-				opentracing.ChildOf(parentCtx),
-				ext.SpanKindRPCClient,
-			)
-			defer clientSpan.Finish()
-
-			md, ok := metadata.FromOutgoingContext(ctx)
-			if !ok {
-				md = metadata.New(nil)
-			} else {
-				md = md.Copy()
-			}
-
-			err := tracer.Inject(clientSpan.Context(), opentracing.TextMap, mdReaderWriter{&md})
-			if err != nil {
-				log.Error(err)
-			}
-			ctx = metadata.NewOutgoingContext(ctx, md)
-			return next(ctx, method, req, reply)
+		if t == nil {
+			log.Panic("uninitiated tracer ")
 		}
+		var parentCtx opentracing.SpanContext
+		if parentSpan := opentracing.SpanFromContext(ctx); parentSpan != nil {
+			parentCtx = parentSpan.Context()
+		}
+		clientSpan := t.StartSpan(
+			method,
+			opentracing.ChildOf(parentCtx),
+			ext.SpanKindRPCClient,
+		)
+		defer clientSpan.Finish()
+
+		md, ok := metadata.FromOutgoingContext(ctx)
+		if !ok {
+			md = metadata.New(nil)
+		} else {
+			md = md.Copy()
+		}
+
+		err := t.Inject(clientSpan.Context(), opentracing.TextMap, mdReaderWriter{&md})
+		if err != nil {
+			log.Error(err)
+		}
+		ctx = metadata.NewOutgoingContext(ctx, md)
+		return next(ctx, method, req, reply)
 	}
 }
 
-func (t *Tracer) Close() {
+func Release() {
+	if t == nil {
+		log.Panic("uninitiated tracer ")
+	}
 	t.closer.Close()
 }
 
 func TraceIDFromContext(ctx context.Context) string {
+	if t == nil {
+		log.Panic("uninitiated tracer ")
+	}
 	span := opentracing.SpanFromContext(ctx)
 	if span != nil {
 		if spanCtx := span.Context(); spanCtx != nil {
@@ -126,6 +140,9 @@ func TraceIDFromContext(ctx context.Context) string {
 }
 
 func Execute(ctx context.Context, operationName string, f func()) context.Context {
+	if t == nil {
+		log.Panic("uninitiated tracer ")
+	}
 	span, spanCtx := opentracing.StartSpanFromContext(ctx, operationName)
 	f()
 	span.Finish()
@@ -133,6 +150,9 @@ func Execute(ctx context.Context, operationName string, f func()) context.Contex
 }
 
 func Start(ctx context.Context, operationName string) opentracing.Span {
+	if t == nil {
+		log.Panic("uninitiated tracer ")
+	}
 	span := opentracing.SpanFromContext(ctx)
 	if span != nil {
 		return opentracing.GlobalTracer().StartSpan(operationName,
@@ -142,6 +162,9 @@ func Start(ctx context.Context, operationName string) opentracing.Span {
 }
 
 func Stop(ctx context.Context, span opentracing.Span) context.Context {
+	if t == nil {
+		log.Panic("uninitiated tracer ")
+	}
 	span.Finish()
 	return opentracing.ContextWithSpan(ctx, span)
 }

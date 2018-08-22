@@ -1,11 +1,14 @@
 package tracing
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"io"
 	"strings"
 
+	"github.com/gogo/protobuf/jsonpb"
+	"github.com/gogo/protobuf/proto"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
 	jaeger "github.com/uber/jaeger-client-go"
@@ -21,8 +24,9 @@ var t *Tracer
 
 type Tracer struct {
 	opentracing.Tracer
-	opt    options
-	closer io.Closer
+	opt       options
+	closer    io.Closer
+	marshaler *jsonpb.Marshaler
 }
 
 func Init(opts ...Option) error {
@@ -49,9 +53,10 @@ func Init(opts ...Option) error {
 	}
 	opentracing.SetGlobalTracer(tracer)
 	t = &Tracer{
-		Tracer: tracer,
-		closer: closer,
-		opt:    opt,
+		Tracer:    tracer,
+		opt:       opt,
+		closer:    closer,
+		marshaler: &jsonpb.Marshaler{EnumsAsInts: true},
 	}
 	return nil
 }
@@ -76,10 +81,18 @@ func ServerMiddleware(next interceptor.UnaryHandler) interceptor.UnaryHandler {
 			ext.RPCServerOption(spanCtx),
 			ext.SpanKindRPCServer,
 		)
-		defer span.Finish()
-
 		ctx = opentracing.ContextWithSpan(ctx, span)
-		return next(ctx, req, info)
+		rsp, err := next(ctx, req, info)
+		buf := &bytes.Buffer{}
+		if err := t.marshaler.Marshal(buf, req.(proto.Message)); err == nil {
+			span.LogKV("req", buf.String())
+		}
+		buf.Reset()
+		if err := t.marshaler.Marshal(buf, rsp.(proto.Message)); err == nil {
+			span.LogKV("rsp", buf.String())
+		}
+		span.Finish()
+		return rsp, err
 	}
 }
 

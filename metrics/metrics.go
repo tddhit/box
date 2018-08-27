@@ -1,53 +1,64 @@
 package metrics
 
 import (
+	"context"
+	"time"
+
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/tddhit/box/interceptor"
+	"github.com/tddhit/box/transport/common"
 )
 
-type Metrics struct {
-	opt options
-	QPS *prometheus.GaugeVec
-	EPS *prometheus.GaugeVec   // error per second
-	TPQ *prometheus.SummaryVec // time per query
+var m *metrics
+
+type metrics struct {
+	count   *prometheus.CounterVec
+	err     *prometheus.CounterVec
+	latency *prometheus.HistogramVec
 }
 
-func New(opts ...Option) *Metrics {
-	opt := defaultOption
-	for _, o := range opts {
-		o(&opt)
-	}
-	m := &Metrics{
-		opt: opt,
-	}
-	if opt.useQPS {
-		m.QPS = prometheus.NewGaugeVec(
-			prometheus.GaugeOpts{
-				Name: "QPS",
-				Help: "query per second",
+func init() {
+	m = &metrics{
+		count: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "Count",
+				Help: "the total number of requets",
 			},
 			[]string{"endpoint"},
-		)
-		prometheus.MustRegister(m.QPS)
-	}
-	if opt.useEPS {
-		m.EPS = prometheus.NewGaugeVec(
-			prometheus.GaugeOpts{
-				Name: "EPS",
-				Help: "error per second",
+		),
+		err: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "Error",
+				Help: "the total number of error requets",
 			},
 			[]string{"endpoint"},
-		)
-		prometheus.MustRegister(m.EPS)
-	}
-	if opt.useTPQ {
-		m.TPQ = prometheus.NewSummaryVec(
-			prometheus.SummaryOpts{
-				Name: "TPQ",
+		),
+		latency: prometheus.NewHistogramVec(
+			prometheus.HistogramOpts{
+				Name: "Latency",
 				Help: "time per query",
 			},
 			[]string{"endpoint"},
-		)
-		prometheus.MustRegister(m.TPQ)
+		),
 	}
-	return m
+	prometheus.MustRegister(m.count)
+	prometheus.MustRegister(m.err)
+	prometheus.MustRegister(m.latency)
+}
+
+func Middleware(next interceptor.UnaryHandler) interceptor.UnaryHandler {
+	return func(ctx context.Context, req interface{},
+		info *common.UnaryServerInfo) (interface{}, error) {
+
+		m.count.WithLabelValues(info.FullMethod).Inc()
+		start := time.Now()
+		rsp, err := next(ctx, req, info)
+		elapse := float64(time.Since(start) / time.Millisecond)
+		m.latency.WithLabelValues(info.FullMethod).Observe(elapse)
+		if err != nil {
+			m.err.WithLabelValues(info.FullMethod).Inc()
+		}
+		return rsp, err
+	}
 }

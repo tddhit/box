@@ -16,9 +16,9 @@ type ServerOptions struct {
 
 type ServerOption func(*ServerOptions)
 
-func WithUnaryServerMiddleware(m interceptor.UnaryServerMiddleware) ServerOption {
+func WithUnaryServerMiddleware(ms ...interceptor.UnaryServerMiddleware) ServerOption {
 	return func(o *ServerOptions) {
-		o.Middlewares = append(o.Middlewares, m)
+		o.Middlewares = append(o.Middlewares, ms...)
 	}
 }
 

@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/tddhit/box/socket"
 	"github.com/tddhit/box/stats"
 	"github.com/tddhit/box/transport"
@@ -150,6 +151,7 @@ func (w *worker) serve() {
 	http.HandleFunc("/status", w.doStatus)
 	http.HandleFunc("/stats", w.doStats)
 	http.HandleFunc("/stats.html", w.doStatsHTML)
+	http.Handle("/metrics", promhttp.Handler())
 
 	//http.Handle("/metrics", promhttp.Handler())
 	lis, err := socket.Listen(w.addr)

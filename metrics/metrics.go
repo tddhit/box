@@ -36,8 +36,9 @@ func init() {
 		),
 		latency: prometheus.NewHistogramVec(
 			prometheus.HistogramOpts{
-				Name: "request_latency",
-				Help: "time per query",
+				Name:    "request_latency",
+				Help:    "time per query",
+				Buckets: []float64{10, 50, 100, 200, 500, 1000, 2000},
 			},
 			[]string{"endpoint"},
 		),

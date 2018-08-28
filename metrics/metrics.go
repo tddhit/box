@@ -22,21 +22,21 @@ func init() {
 	m = &metrics{
 		count: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
-				Name: "Count",
+				Name: "http_request_count",
 				Help: "the total number of requets",
 			},
 			[]string{"endpoint"},
 		),
 		err: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
-				Name: "Error",
+				Name: "http_request_error",
 				Help: "the total number of error requets",
 			},
 			[]string{"endpoint"},
 		),
 		latency: prometheus.NewHistogramVec(
 			prometheus.HistogramOpts{
-				Name: "Latency",
+				Name: "http_request_latency",
 				Help: "time per query",
 			},
 			[]string{"endpoint"},

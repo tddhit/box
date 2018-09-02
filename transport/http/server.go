@@ -140,5 +140,11 @@ func handleReq(ctx context.Context, method reflect.Value,
 }
 
 func (s *HttpServer) Close() {
+	if s.opts.FuncBeforeClose != nil {
+		s.opts.FuncBeforeClose()
+	}
 	s.Server.Shutdown(context.Background())
+	if s.opts.FuncAfterClose != nil {
+		s.opts.FuncAfterClose()
+	}
 }

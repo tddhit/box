@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"io"
 	"strings"
+	"unsafe"
 
 	"github.com/gogo/protobuf/jsonpb"
 	"github.com/gogo/protobuf/proto"
@@ -66,7 +67,7 @@ func ServerMiddleware(next interceptor.UnaryHandler) interceptor.UnaryHandler {
 		info *common.UnaryServerInfo) (interface{}, error) {
 
 		if t == nil {
-			log.Panic("uninitiated tracer ")
+			Init()
 		}
 		md, ok := metadata.FromIncomingContext(ctx)
 		if !ok {
@@ -87,9 +88,17 @@ func ServerMiddleware(next interceptor.UnaryHandler) interceptor.UnaryHandler {
 		if err := t.marshaler.Marshal(buf, req.(proto.Message)); err == nil {
 			span.LogKV("req", buf.String())
 		}
-		buf.Reset()
-		if err := t.marshaler.Marshal(buf, rsp.(proto.Message)); err == nil {
-			span.LogKV("rsp", buf.String())
+		if rsp != nil {
+			face := (*iface)(unsafe.Pointer(&rsp))
+			if face.data != 0 {
+				buf.Reset()
+				if err := t.marshaler.Marshal(buf, rsp.(proto.Message)); err == nil {
+					span.LogKV("rsp", buf.String())
+				}
+			}
+		}
+		if err != nil {
+			span.LogKV("err", err.Error())
 		}
 		span.Finish()
 		return rsp, err
@@ -101,7 +110,7 @@ func ClientMiddleware(next interceptor.UnaryInvoker) interceptor.UnaryInvoker {
 		req, reply interface{}) error {
 
 		if t == nil {
-			log.Panic("uninitiated tracer ")
+			Init()
 		}
 		var parentCtx opentracing.SpanContext
 		if parentSpan := opentracing.SpanFromContext(ctx); parentSpan != nil {
@@ -139,7 +148,7 @@ func Release() {
 
 func TraceIDFromContext(ctx context.Context) string {
 	if t == nil {
-		log.Panic("uninitiated tracer ")
+		Init()
 	}
 	span := opentracing.SpanFromContext(ctx)
 	if span != nil {
@@ -154,7 +163,7 @@ func TraceIDFromContext(ctx context.Context) string {
 
 func Execute(ctx context.Context, operationName string, f func()) context.Context {
 	if t == nil {
-		log.Panic("uninitiated tracer ")
+		Init()
 	}
 	span, spanCtx := opentracing.StartSpanFromContext(ctx, operationName)
 	f()
@@ -164,7 +173,7 @@ func Execute(ctx context.Context, operationName string, f func()) context.Contex
 
 func Start(ctx context.Context, operationName string) opentracing.Span {
 	if t == nil {
-		log.Panic("uninitiated tracer ")
+		Init()
 	}
 	span := opentracing.SpanFromContext(ctx)
 	if span != nil {
@@ -176,7 +185,7 @@ func Start(ctx context.Context, operationName string) opentracing.Span {
 
 func Stop(ctx context.Context, span opentracing.Span) context.Context {
 	if t == nil {
-		log.Panic("uninitiated tracer ")
+		Init()
 	}
 	span.Finish()
 	return opentracing.ContextWithSpan(ctx, span)
@@ -203,4 +212,9 @@ func (w mdReaderWriter) ForeachKey(handler func(key, val string) error) error {
 		}
 	}
 	return nil
+}
+
+type iface struct {
+	typ  uintptr
+	data uintptr
 }

@@ -13,6 +13,8 @@ type ServerOptions struct {
 	GatewayMux        *runtime.ServeMux
 	UnaryMiddlewares  []interceptor.UnaryServerMiddleware
 	StreamMiddlewares []interceptor.StreamServerMiddleware
+	FuncBeforeClose   func()
+	FuncAfterClose    func()
 }
 
 type ServerOption func(*ServerOptions)
@@ -41,6 +43,18 @@ func WithRegistry(r *naming.Registry, k string) ServerOption {
 func WithGatewayMux(m *runtime.ServeMux) ServerOption {
 	return func(o *ServerOptions) {
 		o.GatewayMux = m
+	}
+}
+
+func WithBeforeClose(f func()) ServerOption {
+	return func(o *ServerOptions) {
+		o.FuncBeforeClose = f
+	}
+}
+
+func WithAfterClose(f func()) ServerOption {
+	return func(o *ServerOptions) {
+		o.FuncAfterClose = f
 	}
 }
 

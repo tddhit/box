@@ -69,5 +69,11 @@ func (s *GrpcTransport) Register(desc common.ServiceDesc,
 }
 
 func (s *GrpcTransport) Close() {
+	if s.opts.FuncBeforeClose != nil {
+		s.opts.FuncBeforeClose()
+	}
 	s.Server.GracefulStop()
+	if s.opts.FuncAfterClose != nil {
+		s.opts.FuncAfterClose()
+	}
 }

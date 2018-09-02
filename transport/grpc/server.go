@@ -30,9 +30,8 @@ func New(lis net.Listener,
 		lis:  lis,
 	}
 	s.Server = grpc.NewServer(
-		grpc.UnaryInterceptor(
-			s.unaryInterceptor,
-		),
+		grpc.UnaryInterceptor(s.unaryInterceptor),
+		grpc.StreamInterceptor(s.streamInterceptor),
 	)
 	return s
 }
@@ -47,8 +46,20 @@ func (s *GrpcTransport) unaryInterceptor(ctx context.Context,
 		return handler(ctx, req)
 	}
 
-	h := interceptor.ChainUnaryServer(f, s.opts.Middlewares...)
+	h := interceptor.ChainUnaryServerMiddleware(f, s.opts.UnaryMiddlewares...)
 	return h(ctx, req, (*common.UnaryServerInfo)(info))
+}
+
+func (s *GrpcTransport) streamInterceptor(srv interface{}, ss grpc.ServerStream,
+	info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+
+	f := func(srv interface{}, ss common.ServerStream,
+		info *common.StreamServerInfo) error {
+
+		return handler(srv, ss)
+	}
+	h := interceptor.ChainStreamServerMiddleware(f, s.opts.StreamMiddlewares...)
+	return h(srv, ss, (*common.StreamServerInfo)(info))
 }
 
 func (s *GrpcTransport) Register(desc common.ServiceDesc,

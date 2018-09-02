@@ -9,15 +9,13 @@ type UnaryInvoker func(ctx context.Context,
 
 type UnaryClientMiddleware func(UnaryInvoker) UnaryInvoker
 
-func chainUnaryClient(h UnaryInvoker, others []UnaryClientMiddleware) UnaryInvoker {
-	for i := len(others) - 1; i >= 0; i-- {
-		h = others[i](h)
-	}
-	return h
-}
+func ChainUnaryClientMiddleware(h UnaryInvoker,
+	others ...UnaryClientMiddleware) UnaryInvoker {
 
-func ChainUnaryClient(h UnaryInvoker, others ...UnaryClientMiddleware) UnaryInvoker {
 	var ms = []UnaryClientMiddleware{}
 	ms = append(ms, others...)
-	return chainUnaryClient(h, ms)
+	for i := len(ms) - 1; i >= 0; i-- {
+		h = ms[i](h)
+	}
+	return h
 }

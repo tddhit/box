@@ -3,6 +3,7 @@ package http
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"github.com/golang/protobuf/jsonpb"
 	"github.com/golang/protobuf/proto"
 
+	"github.com/tddhit/box/transport/common"
 	"github.com/tddhit/box/transport/option"
 	"github.com/tddhit/tools/log"
 )
@@ -78,4 +80,10 @@ func (c *HttpClient) Invoke(ctx context.Context, method string,
 }
 
 func (c *HttpClient) Close() {
+}
+
+func (c *HttpClient) NewStream(ctx context.Context, desc common.ServiceDesc, i int,
+	method string, opts ...option.CallOption) (common.ClientStream, error) {
+
+	return nil, errors.New("http does not support stream.")
 }

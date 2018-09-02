@@ -40,8 +40,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/tddhit/box/cmd/protoc-gen-box/generator"
 	pb "github.com/golang/protobuf/protoc-gen-go/descriptor"
+	"github.com/tddhit/box/cmd/protoc-gen-box/generator"
 )
 
 // generatedCodeVersion indicates a version of the generated code.

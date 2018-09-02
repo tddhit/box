@@ -55,6 +55,7 @@ func (s *Server) RegisterAddr() {
 
 func (s *Server) UnregisterAddr() {
 	if s.opts.Registry != nil {
+		log.Info("unregister")
 		s.cancel()
 		time.Sleep(time.Duration(s.opts.Registry.TTL())*time.Second +
 			time.Second)
@@ -75,6 +76,8 @@ func (s *Server) Started() <-chan struct{} {
 type ClientConn interface {
 	Invoke(ctx context.Context, method string, args interface{},
 		reply interface{}, opts ...option.CallOption) error
+	NewStream(ctx context.Context, desc trcommon.ServiceDesc, i int,
+		method string, opts ...option.CallOption) (trcommon.ClientStream, error)
 	Close()
 }
 

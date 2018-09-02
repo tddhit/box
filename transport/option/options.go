@@ -8,17 +8,26 @@ import (
 )
 
 type ServerOptions struct {
-	RegistryKey string
-	Registry    *naming.Registry
-	GatewayMux  *runtime.ServeMux
-	Middlewares []interceptor.UnaryServerMiddleware
+	RegistryKey       string
+	Registry          *naming.Registry
+	GatewayMux        *runtime.ServeMux
+	UnaryMiddlewares  []interceptor.UnaryServerMiddleware
+	StreamMiddlewares []interceptor.StreamServerMiddleware
 }
 
 type ServerOption func(*ServerOptions)
 
 func WithUnaryServerMiddleware(ms ...interceptor.UnaryServerMiddleware) ServerOption {
 	return func(o *ServerOptions) {
-		o.Middlewares = append(o.Middlewares, ms...)
+		o.UnaryMiddlewares = append(o.UnaryMiddlewares, ms...)
+	}
+}
+
+func WithStreamServerMiddleware(
+	ms ...interceptor.StreamServerMiddleware) ServerOption {
+
+	return func(o *ServerOptions) {
+		o.StreamMiddlewares = append(o.StreamMiddlewares, ms...)
 	}
 }
 
@@ -36,15 +45,22 @@ func WithGatewayMux(m *runtime.ServeMux) ServerOption {
 }
 
 type DialOptions struct {
-	Balancer    string
-	Middlewares []interceptor.UnaryClientMiddleware
+	Balancer          string
+	UnaryMiddlewares  []interceptor.UnaryClientMiddleware
+	StreamMiddlewares []interceptor.StreamClientMiddleware
 }
 
 type DialOption func(*DialOptions)
 
 func WithUnaryClientMiddleware(m interceptor.UnaryClientMiddleware) DialOption {
 	return func(o *DialOptions) {
-		o.Middlewares = append(o.Middlewares, m)
+		o.UnaryMiddlewares = append(o.UnaryMiddlewares, m)
+	}
+}
+
+func WithStreamClientMiddleware(m interceptor.StreamClientMiddleware) DialOption {
+	return func(o *DialOptions) {
+		o.StreamMiddlewares = append(o.StreamMiddlewares, m)
 	}
 }
 

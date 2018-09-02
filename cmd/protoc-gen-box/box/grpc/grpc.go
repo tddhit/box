@@ -5,8 +5,8 @@ import (
 	"path"
 	"strings"
 
-	"github.com/tddhit/box/cmd/protoc-gen-box/generator"
 	pb "github.com/golang/protobuf/protoc-gen-go/descriptor"
+	"github.com/tddhit/box/cmd/protoc-gen-box/generator"
 )
 
 const generatedCodeVersion = 4
@@ -130,10 +130,21 @@ func (g *grpc) generateService(file *generator.FileDescriptor, service *pb.Servi
 	g.P("}")
 	g.P()
 
+	var methodIndex, streamIndex int
 	serviceDescVar := "_" + servName + "_serviceDesc"
 	for _, method := range service.Method {
+		var descExpr string
+		if !method.GetServerStreaming() && !method.GetClientStreaming() {
+			// Unary RPC method
+			descExpr = fmt.Sprintf("&%s.Methods[%d]", serviceDescVar, methodIndex)
+			methodIndex++
+		} else {
+			// Streaming RPC method
+			descExpr = fmt.Sprintf("%sGrpcServiceDesc, %d", servName, streamIndex)
+			streamIndex++
+		}
 		g.generateClientMethod(servName, fullServName,
-			serviceDescVar, method)
+			serviceDescVar, method, descExpr)
 	}
 
 	g.P("type ", unexport(servName), "GrpcServiceDesc struct {")
@@ -172,9 +183,10 @@ func (g *grpc) generateClientSignature(servName string,
 }
 
 func (g *grpc) generateClientMethod(servName, fullServName,
-	serviceDescVar string, method *pb.MethodDescriptorProto) {
+	serviceDescVar string, method *pb.MethodDescriptorProto, descExpr string) {
 
 	sname := fmt.Sprintf("/%s/%s", fullServName, method.GetName())
+	methName := generator.CamelCase(method.GetName())
 	outType := g.typeName(method.GetOutputType())
 
 	if method.GetOptions().GetDeprecated() {
@@ -193,4 +205,15 @@ func (g *grpc) generateClientMethod(servName, fullServName,
 		g.P()
 		return
 	}
+	streamType := unexport(servName) + methName + "Client"
+	g.P("stream, err := c.cc.NewStream(ctx, ", descExpr, `, "`, sname, `", opts...)`)
+	g.P("if err != nil { return nil, err }")
+	g.P("x := &", streamType, "{stream}")
+	if !method.GetClientStreaming() {
+		g.P("if err := x.ClientStream.SendMsg(in); err != nil { return nil, err }")
+		g.P("if err := x.ClientStream.CloseSend(); err != nil { return nil, err }")
+	}
+	g.P("return x, nil")
+	g.P("}")
+	g.P()
 }

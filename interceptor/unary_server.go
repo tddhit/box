@@ -12,19 +12,17 @@ type UnaryHandler func(ctx context.Context, req interface{},
 
 type UnaryServerMiddleware func(UnaryHandler) UnaryHandler
 
-func chainUnaryServer(h UnaryHandler, others []UnaryServerMiddleware) UnaryHandler {
-	for i := len(others) - 1; i >= 0; i-- {
-		h = others[i](h)
-	}
-	return h
-}
+func ChainUnaryServerMiddleware(h UnaryHandler,
+	others ...UnaryServerMiddleware) UnaryHandler {
 
-func ChainUnaryServer(h UnaryHandler, others ...UnaryServerMiddleware) UnaryHandler {
 	var ms = []UnaryServerMiddleware{
 		withStats,
 	}
 	ms = append(ms, others...)
-	return chainUnaryServer(h, ms)
+	for i := len(ms) - 1; i >= 0; i-- {
+		h = ms[i](h)
+	}
+	return h
 }
 
 func withStats(next UnaryHandler) UnaryHandler {

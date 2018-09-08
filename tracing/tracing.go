@@ -130,7 +130,8 @@ func ClientMiddleware(next interceptor.UnaryInvoker) interceptor.UnaryInvoker {
 			md = md.Copy()
 		}
 
-		err := t.Inject(clientSpan.Context(), opentracing.TextMap, mdReaderWriter{&md})
+		err := t.Inject(clientSpan.Context(),
+			opentracing.TextMap, mdReaderWriter{&md})
 		if err != nil {
 			log.Error(err)
 		}
@@ -161,34 +162,29 @@ func TraceIDFromContext(ctx context.Context) string {
 	return ""
 }
 
-func Execute(ctx context.Context, operationName string, f func()) context.Context {
+func Execute(ctx context.Context, operationName string, f func(ctx context.Context)) {
 	if t == nil {
 		Init()
 	}
 	span, spanCtx := opentracing.StartSpanFromContext(ctx, operationName)
-	f()
+	f(spanCtx)
 	span.Finish()
-	return spanCtx
 }
 
-func Start(ctx context.Context, operationName string) opentracing.Span {
+func Start(ctx context.Context,
+	operationName string) (opentracing.Span, context.Context) {
+
 	if t == nil {
 		Init()
 	}
-	span := opentracing.SpanFromContext(ctx)
-	if span != nil {
-		return opentracing.GlobalTracer().StartSpan(operationName,
-			opentracing.ChildOf(span.Context()))
-	}
-	return opentracing.GlobalTracer().StartSpan(operationName)
+	return opentracing.StartSpanFromContext(ctx, operationName)
 }
 
-func Stop(ctx context.Context, span opentracing.Span) context.Context {
+func Stop(span opentracing.Span) {
 	if t == nil {
 		Init()
 	}
 	span.Finish()
-	return opentracing.ContextWithSpan(ctx, span)
 }
 
 type mdReaderWriter struct {

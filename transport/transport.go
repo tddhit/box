@@ -142,9 +142,7 @@ func DialContext(ctx context.Context, target string,
 		return grpctr.DialContext(ctx, addr, opts...)
 	case "http":
 		return httptr.DialContext(ctx, addr, opts...)
-	case "etcd":
-		return grpctr.DialContext(ctx, target, opts...)
 	default:
-		return nil, errInvalidDialTarget
+		return grpctr.DialContext(ctx, target, opts...)
 	}
 }

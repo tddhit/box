@@ -72,6 +72,8 @@ func newMaster(ctx context.Context) *master {
 		pid:     os.Getpid(),
 		pidPath: f.pidPath,
 		forkC:   make(chan string),
+
+		confCenter: f.confCenter,
 	}
 }
 

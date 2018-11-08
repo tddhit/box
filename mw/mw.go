@@ -61,7 +61,7 @@ func New(opts ...Option) *MW {
 		if len(name) == 0 {
 			log.Fatal("get pidPath fail:", os.Args[0])
 		}
-		f.pidPath = fmt.Sprintf("/var/%s.pid", name[len(name)-1])
+		f.pidPath = fmt.Sprintf("./%s.pid", name[len(name)-1])
 	}
 	baseCtx := context.Background()
 	ctx := context.WithValue(baseCtx, mwKey{}, f)

@@ -195,9 +195,7 @@ func (w *worker) doStatsHTML(rsp http.ResponseWriter, req *http.Request) {
 
 func (w *worker) close() {
 	for _, s := range w.servers {
-		go func(s *transport.Server) {
-			s.UnregisterAddr()
-			s.Close()
-		}(s)
+		s.UnregisterAddr()
+		s.Close()
 	}
 }
